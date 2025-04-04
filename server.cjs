@@ -1,8 +1,7 @@
 const express = require('express');
-const {MongoClient, ObjectId} = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -11,7 +10,6 @@ const port = process.env.PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
 // MongoDB Connection URI - using the provided URI
 const uri = process.env.MONGODB_URI;
@@ -22,10 +20,11 @@ let db;
 async function connectToMongo() {
     try {
         await client.connect();
-        db = client.db(process.env.MONGODB_DB_NAME || 'finance_tracker');
+        db = client.db(process.env.MONGODB_DB_NAME);
         console.log('Connected to MongoDB');
     } catch (err) {
-        console.error('MongoDB connection error:', err);
+        console.error('Failed to connect to MongoDB:', err.message);
+        process.exit(1);
     }
 }
 
@@ -33,171 +32,13 @@ async function connectToMongo() {
 app.get('/api/test-connection', async (req, res) => {
     try {
         await client.db().admin().ping();
-        res.json({success: true, message: 'MongoDB connection successful'});
+        res.json({ success: true, message: 'MongoDB connection successful' });
     } catch (err) {
         res.status(500).json({
             success: false,
             message: 'MongoDB connection failed',
-            error: err.message
+            error: err.message,
         });
-    }
-});
-
-// Initialize database
-app.get('/api/init-database', async (req, res) => {
-    try {
-        // Ensure collections exist
-        await db.createCollection('categories');
-        await db.createCollection('transactions');
-        await db.createCollection('users');
-
-        // Create default admin user if none exists
-        const adminUser = await db.collection('users').findOne({ role: 'admin' });
-        if (!adminUser) {
-            await db.collection('users').insertOne({
-                username: 'admin',
-                password: 'admin123', // In production, use hashed passwords
-                role: 'admin'
-            });
-        }
-
-        res.json({ success: true, message: 'Database initialized successfully' });
-    } catch (err) {
-        res.status(500).json({
-            success: false,
-            message: 'Failed to initialize database',
-            error: err.message
-        });
-    }
-});
-
-// Categories endpoints
-app.get('/api/categories', async (req, res) => {
-    try {
-        const categories = await db.collection('categories').find({}).toArray();
-        res.json(categories);
-    } catch (err) {
-        res.status(500).json({error: err.message});
-    }
-});
-
-app.post('/api/categories', async (req, res) => {
-    try {
-        const result = await db.collection('categories').insertMany(req.body);
-        res.json({success: true, insertedCount: result.insertedCount});
-    } catch (err) {
-        res.status(500).json({error: err.message});
-    }
-});
-
-app.put('/api/categories', async (req, res) => {
-    try {
-        // Replace all categories
-        await db.collection('categories').deleteMany({});
-        if (req.body.length > 0) {
-            await db.collection('categories').insertMany(req.body);
-        }
-        res.json({success: true});
-    } catch (err) {
-        res.status(500).json({error: err.message});
-    }
-});
-
-// Transactions endpoints
-app.get('/api/transactions', async (req, res) => {
-    try {
-        const transactions = await db.collection('transactions').find({}).toArray();
-        res.json(transactions);
-    } catch (err) {
-        res.status(500).json({error: err.message});
-    }
-});
-
-app.post('/api/transactions', async (req, res) => {
-    try {
-        const result = await db.collection('transactions').insertMany(req.body);
-        res.json({success: true, insertedCount: result.insertedCount});
-    } catch (err) {
-        res.status(500).json({error: err.message});
-    }
-});
-
-app.put('/api/transactions', async (req, res) => {
-    try {
-        // Replace all transactions
-        await db.collection('transactions').deleteMany({});
-        if (req.body.length > 0) {
-            await db.collection('transactions').insertMany(req.body);
-        }
-        res.json({success: true});
-    } catch (err) {
-        res.status(500).json({error: err.message});
-    }
-});
-
-// Users endpoints
-app.get('/api/users', async (req, res) => {
-    try {
-        const users = await db.collection('users').find({}).toArray();
-        const formattedUsers = users.map(user => ({
-            id: user._id, // Use MongoDB's _id as the ID
-            username: user.username,
-            role: user.role
-        }));
-        res.json(formattedUsers);
-    } catch (err) {
-        console.error("Error fetching users:", err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.post('/api/users', async (req, res) => {
-    try {
-        const result = await db.collection('users').insertMany(req.body);
-        res.json({success: true, insertedCount: result.insertedCount});
-    } catch (err) {
-        res.status(500).json({error: err.message});
-    }
-});
-
-app.put('/api/users', async (req, res) => {
-    try {
-        // Replace all users
-        await db.collection('users').deleteMany({});
-        if (req.body.length > 0) {
-            await db.collection('users').insertMany(req.body);
-        }
-        res.json({success: true});
-    } catch (err) {
-        res.status(500).json({error: err.message});
-    }
-});
-
-app.post('/api/users/create', async (req, res) => {
-    try {
-        const { username, password, role } = req.body;
-        const user = await db.collection('users').insertOne({
-            username,
-            password, // Note: In production, password should be hashed
-            role,
-            createdAt: new Date(),
-            updatedAt: new Date()
-        });
-        res.json({ success: true, user: { id: user.insertedId, username, role } });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.delete('/api/users/:id', async (req, res) => {
-    try {
-        const result = await db.collection('users').deleteOne({ _id: new ObjectId(req.params.id) });
-        if (result.deletedCount === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
     }
 });
 
@@ -228,13 +69,8 @@ app.post('/api/users/login', async (req, res) => {
     }
 });
 
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 // Initialize and start server
 connectToMongo().then(() => {
-    const port = process.env.PORT || 3001;
     app.listen(port, () => {
         console.log(`Server running on port ${port}`);
     });
